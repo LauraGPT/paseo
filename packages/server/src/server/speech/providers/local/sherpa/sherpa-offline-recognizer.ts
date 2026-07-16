@@ -56,6 +56,59 @@ interface SherpaOfflineStreamNative {
   free?: () => void;
 }
 
+function buildOfflineRecognizerModelConfig(
+  config: SherpaOfflineRecognizerConfig,
+): Record<string, unknown> {
+  const model = config.model;
+  const runtimeConfig = {
+    numThreads: config.numThreads ?? 1,
+    provider: config.provider ?? "cpu",
+    debug: config.debug ?? 0,
+  };
+
+  switch (model.kind) {
+    case "nemo_transducer": {
+      assertFileExists(model.encoder, "offline encoder");
+      assertFileExists(model.decoder, "offline decoder");
+      assertFileExists(model.joiner, "offline joiner");
+      assertFileExists(model.tokens, "tokens");
+      return {
+        transducer: {
+          encoder: model.encoder,
+          decoder: model.decoder,
+          joiner: model.joiner,
+        },
+        tokens: model.tokens,
+        modelType: "nemo_transducer",
+        ...runtimeConfig,
+      };
+    }
+    case "sense_voice": {
+      assertFileExists(model.model, "sense_voice model");
+      assertFileExists(model.tokens, "tokens");
+      return {
+        senseVoice: {
+          model: model.model,
+          useInverseTextNormalization: model.useInverseTextNormalization !== false ? 1 : 0,
+        },
+        tokens: model.tokens,
+        ...runtimeConfig,
+      };
+    }
+    case "paraformer": {
+      assertFileExists(model.model, "paraformer model");
+      assertFileExists(model.tokens, "tokens");
+      return {
+        paraformer: {
+          model: model.model,
+        },
+        tokens: model.tokens,
+        ...runtimeConfig,
+      };
+    }
+  }
+}
+
 export class SherpaOfflineRecognizerEngine {
   public readonly recognizer: SherpaOfflineRecognizerNative;
   public readonly sampleRate: number;
@@ -69,58 +122,7 @@ export class SherpaOfflineRecognizerEngine {
     });
 
     const model = config.model;
-    let modelConfig: Record<string, unknown>;
-
-    switch (model.kind) {
-      case "nemo_transducer": {
-        assertFileExists(model.encoder, "offline encoder");
-        assertFileExists(model.decoder, "offline decoder");
-        assertFileExists(model.joiner, "offline joiner");
-        assertFileExists(model.tokens, "tokens");
-        modelConfig = {
-          transducer: {
-            encoder: model.encoder,
-            decoder: model.decoder,
-            joiner: model.joiner,
-          },
-          tokens: model.tokens,
-          modelType: "nemo_transducer",
-          numThreads: config.numThreads ?? 1,
-          provider: config.provider ?? "cpu",
-          debug: config.debug ?? 0,
-        };
-        break;
-      }
-      case "sense_voice": {
-        assertFileExists(model.model, "sense_voice model");
-        assertFileExists(model.tokens, "tokens");
-        modelConfig = {
-          senseVoice: {
-            model: model.model,
-            useInverseTextNormalization: model.useInverseTextNormalization !== false ? 1 : 0,
-          },
-          tokens: model.tokens,
-          numThreads: config.numThreads ?? 1,
-          provider: config.provider ?? "cpu",
-          debug: config.debug ?? 0,
-        };
-        break;
-      }
-      case "paraformer": {
-        assertFileExists(model.model, "paraformer model");
-        assertFileExists(model.tokens, "tokens");
-        modelConfig = {
-          paraformer: {
-            model: model.model,
-          },
-          tokens: model.tokens,
-          numThreads: config.numThreads ?? 1,
-          provider: config.provider ?? "cpu",
-          debug: config.debug ?? 0,
-        };
-        break;
-      }
-    }
+    const modelConfig = buildOfflineRecognizerModelConfig(config);
 
     const sherpa = (config.loadSherpaOnnxNode ?? loadSherpaOnnxNode)();
 
